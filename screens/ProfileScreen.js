@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { AuthContext } from '../utils/AuthContext';
 import axios from 'axios'; 
+import api from '../utils/api'; 
+
 
 const ProfileScreen = () => {
   const { state, signOut } = useContext(AuthContext);
@@ -38,25 +40,38 @@ const ProfileScreen = () => {
 
     setIsSearching(true);
     try {
-      
-      const response = await axios.get(`https://api.intra.42.fr/v2/users`, {
+      const response = await api.get(`/users`, {
         params: { 
-          filter: { login: searchQuery }
-        },
-        headers: {
-          Authorization: `Bearer ${state.token}`
+          'filter[login]': searchQuery.trim().toLowerCase() 
         }
       });
 
       if (response.data && response.data.length > 0) {
-        setCurrentUser(response.data[0]);
+        const userDetailsResponse = await api.get(`/users/${response.data[0].id}`);
+        
+        setCurrentUser(userDetailsResponse.data);
         setIsViewingOwnProfile(false);
       } else {
         Alert.alert('User not found', 'No user found with that login');
       }
     } catch (error) {
       console.error('Error searching for user:', error);
-      Alert.alert('Error', 'Failed to search for user. Please try again.');
+      
+      if (error.response) {
+        if (error.response.status === 404) {
+          Alert.alert('User not found', 'No user exists with this login');
+        } else if (error.response.status === 401) {
+          Alert.alert('Authentication Error', 'Please log in again', [
+            { text: 'OK', onPress: () => signOut() }
+          ]);
+        } else {
+          Alert.alert('Error', `Server error: ${error.response.status}`);
+        }
+      } else if (error.request) {
+        Alert.alert('Network Error', 'No response from server. Check your connection.');
+      } else {
+        Alert.alert('Error', 'An unexpected error occurred');
+      }
     } finally {
       setIsSearching(false);
     }
@@ -356,13 +371,13 @@ const ProfileScreen = () => {
 const getStatusColor = (status) => {
   switch (status) {
     case 'finished':
-      return '#4CAF50';
+      return '#4CAF50'; // Green 
     case 'in_progress':
-      return '#2196F3';
+      return '#757575'; // Grey 
     case 'failed':
-      return '#F44336';
+      return '#F44336'; // Red
     default:
-      return '#757575';
+      return '#9E9E9E'; // Lighter grey for unknown status
   }
 };
 

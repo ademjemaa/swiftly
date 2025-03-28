@@ -35,7 +35,6 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator>
       {state.userToken ? (
-        // User is signed in
         <Stack.Screen 
           name="Profile" 
           component={ProfileScreen} 

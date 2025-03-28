@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+const Logo42 = require('../assets/42_logo.svg');
 
 const LoginScreen = ({ navigation }) => {
   const handleLogin = () => {
@@ -10,13 +11,13 @@ const LoginScreen = ({ navigation }) => {
     <View style={styles.container}>
       <View style={styles.content}>
         <Image 
-          source={{ uri: 'https://42.fr/wp-content/uploads/2021/08/42-Final-sigle-seul.svg' }} 
+          source={Logo42} 
           style={styles.logo}
           resizeMode="contain"
         />
         
-        <Text style={styles.title}>42 Profile Viewer</Text>
-        <Text style={styles.subtitle}>Connect with your 42 account to access your profile information</Text>
+        <Text style={styles.title}>Companion</Text>
+        <Text style={styles.subtitle}>Connect with your 42 account to access your information</Text>
         
         <TouchableOpacity
           style={styles.loginButton}

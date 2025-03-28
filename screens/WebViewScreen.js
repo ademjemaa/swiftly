@@ -14,20 +14,16 @@ const WebViewScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleNavigationStateChange = async (navState) => {
-    // Check if the URL contains our redirect URI with a code parameter
     if (navState.url.includes(REDIRECT_URI.split('://')[1]) && navState.url.includes('code=')) {
       setIsLoading(true);
       
-      // Extract the authorization code from URL
       const code = navState.url.split('code=')[1].split('&')[0];
       console.log('Authorization code received:', code);
       
       try {
-        // Exchange code for token
         const token = await getToken(code);
         
         if (token) {
-          // Sign in with the token
           const success = await signIn(token);
           
           if (success) {
@@ -64,6 +60,7 @@ const WebViewScreen = ({ navigation }) => {
       source={{ uri: AUTH_URL }}
       onNavigationStateChange={handleNavigationStateChange}
       startInLoadingState={true}
+      incognito={true}
       renderLoading={() => (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#00BABC" />

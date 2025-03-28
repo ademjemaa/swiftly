@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchUserData, getStoredToken, logout as authLogout } from './auth';
+import { fetchUserData, getStoredToken, logout as authLogout, isTokenExpired } from './auth';
 
 // Initial state
 const initialState = {
@@ -9,9 +9,6 @@ const initialState = {
   userToken: null,
   user: null,
 };
-
-// Create context
-export const AuthContext = createContext(initialState);
 
 // Reducer function
 const authReducer = (state, action) => {
@@ -47,6 +44,9 @@ const authReducer = (state, action) => {
   }
 };
 
+// Create context
+export const AuthContext = createContext(initialState);
+
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
@@ -57,8 +57,11 @@ export const AuthProvider = ({ children }) => {
         // Get token from storage
         const userToken = await getStoredToken();
         
-        if (userToken) {
-          // If we have a token, fetch user data
+        // Check if token is expired
+        const tokenExpired = await isTokenExpired();
+        
+        if (userToken && !tokenExpired) {
+          // If we have a valid token, fetch user data
           const userData = await fetchUserData();
           
           if (userData) {
@@ -70,11 +73,15 @@ export const AuthProvider = ({ children }) => {
             dispatch({ type: 'SIGN_OUT' });
           }
         } else {
-          // No token found, user is not signed in
-          dispatch({ type: 'RESTORE_TOKEN', token: null, user: null });
+          // No token or token is expired
+          await authLogout();
+          dispatch({ type: 'SIGN_OUT' });
         }
       } catch (e) {
         console.log('Failed to restore authentication state:', e);
+        dispatch({ type: 'RESTORE_TOKEN', token: null, user: null });
+      } finally {
+        // Ensure loading state is set to false
         dispatch({ type: 'RESTORE_TOKEN', token: null, user: null });
       }
     };
