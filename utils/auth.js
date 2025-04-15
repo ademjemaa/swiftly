@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeRedirectUri } from "expo-auth-session";
-import api from "./api"; 
-import axios from 'axios'; // Assuming you're using axios for API calls
+import axios from 'axios';
 
 const CLIENT_ID = "u-s4t2ud-eada5197242c69a9cbe15329b4aec863700f7f919b7c0694a4e1b1afc6ec8c41";
-const SECRET = "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";
+const SECRET = "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";
 const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
+const API_URL = "https://api.intra.42.fr/v2";
 const REDIRECT_URI = makeRedirectUri({ native: "com.swiftycompanion://oauth" });
 
 export const getToken = async (authCode) => {
@@ -13,21 +13,61 @@ export const getToken = async (authCode) => {
     console.log('Getting token with code:', authCode);
     console.log('Redirect URI:', REDIRECT_URI);
     
-    const res = await axios.post(TOKEN_URL, {
+    const { data } = await axios.post(TOKEN_URL, {
       grant_type: "authorization_code",
       client_id: CLIENT_ID,
       client_secret: SECRET,
       code: authCode,
       redirect_uri: REDIRECT_URI,
     });
+    console.log(data);
 
-    const token = res.data.access_token;
-    await AsyncStorage.setItem("token", token);
+    const { access_token, refresh_token, expires_in, secret_valid_until } = data;
+    const expiresAt = Date.now() + (expires_in * 1000); // Convert to milliseconds
+    
+    // Store tokens and expiration
+    await AsyncStorage.setItem("userToken", access_token);
+    await AsyncStorage.setItem("refreshToken", refresh_token);
+    await AsyncStorage.setItem("expiresAt", expiresAt.toString());
+    await AsyncStorage.setItem("secretValidUntil", secret_valid_until.toString());
+    
     console.log("Token stored successfully");
-
-    return token;
+    return access_token;
   } catch (error) {
     console.error("Error getting token:", error?.response?.data || error);
+    return null;
+  }
+};
+
+export const refreshAccessToken = async () => {
+  try {
+    const refreshToken = await AsyncStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      console.error("No refresh token available");
+      return null;
+    }
+
+    const { data } = await axios.post(TOKEN_URL, {
+      grant_type: "refresh_token",
+      client_id: CLIENT_ID,
+      client_secret: SECRET,
+      refresh_token: refreshToken,
+    });
+    console.log(data);
+
+    const { access_token, refresh_token, expires_in, secret_valid_until } = data;
+    const expiresAt = Date.now() + (expires_in * 1000);
+
+    // Store new tokens and expiration
+    await AsyncStorage.setItem("userToken", access_token);
+    await AsyncStorage.setItem("refreshToken", refresh_token);
+    await AsyncStorage.setItem("expiresAt", expiresAt.toString());
+    await AsyncStorage.setItem("secretValidUntil", secret_valid_until.toString());
+
+    console.log("Token refreshed successfully");
+    return access_token;
+  } catch (error) {
+    console.error("Error refreshing token:", error?.response?.data || error);
     return null;
   }
 };
@@ -35,27 +75,60 @@ export const getToken = async (authCode) => {
 // Function to check if the token is expired
 export const isTokenExpired = async () => {
   try {
-    // Retrieve the token and its expiration time from AsyncStorage
-    const tokenData = await AsyncStorage.getItem('tokenData');
+    const expiresAt = await AsyncStorage.getItem('expiresAt');
     
-    if (!tokenData) {
-      return true; // No token exists, consider it expired
+    if (!expiresAt) {
+      return true; // No expiration time exists, consider it expired
     }
 
-    const { expiresAt } = JSON.parse(tokenData);
+    const expirationTime = parseInt(expiresAt);
+    const isExpired = Date.now() >= expirationTime;
     
-    // Compare current time with expiration time
-    return Date.now() >= expiresAt;
+    console.log(`Token expires at: ${expirationTime}, current time: ${Date.now()}, is expired: ${isExpired}`);
+    
+    return isExpired;
   } catch (error) {
     console.error('Error checking token expiration:', error);
-    return true; // If there's an error, consider the token expired
+    return true;
+  }
+};
+
+export const isSecretExpired = async () => {
+  try {
+    const secretValidUntil = await AsyncStorage.getItem('secretValidUntil');
+    
+    if (!secretValidUntil) {
+      return false; // No secret expiration time exists, consider it not expired
+    }
+
+    const secretExpirationTime = parseInt(secretValidUntil);
+    // Convert secretExpirationTime from seconds to milliseconds for comparison
+    const isExpired = Date.now() >= (secretExpirationTime * 1000);
+    
+    console.log(`Secret valid until: ${secretExpirationTime}, current time: ${Math.floor(Date.now()/1000)}, is expired: ${isExpired}`);
+    
+    return isExpired;
+  } catch (error) {
+    console.error('Error checking secret expiration:', error);
+    return false;
   }
 };
 
 // Modify fetchUserData to handle token expiration
 export const fetchUserData = async () => {
   try {
-    const res = await api.get("/me");
+    const token = await getStoredToken();
+    if (!token) {
+      console.error("No token available for fetching user data");
+      return null;
+    }
+
+    // Use axios directly instead of the api instance to avoid circular dependency
+    const res = await axios.get(`${API_URL}/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
     return res.data;
   } catch (error) {
     console.error("Error fetching user data:", error?.response?.data || error);
@@ -66,12 +139,11 @@ export const fetchUserData = async () => {
 // Modify getStoredToken to include expiration check
 export const getStoredToken = async () => {
   try {
+    // Only check if the token is expired, don't try to refresh here
     const tokenExpired = await isTokenExpired();
     
     if (tokenExpired) {
-      // Remove expired token
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('tokenData');
+      // Return null if token is expired - refresh will be handled by the API interceptor
       return null;
     }
 
@@ -95,7 +167,7 @@ export const login = async (credentials) => {
     
     // Store token and expiration data
     await AsyncStorage.setItem('userToken', token);
-    await AsyncStorage.setItem('tokenData', JSON.stringify({ expiresAt }));
+    await AsyncStorage.setItem('expires_in', JSON.stringify({ expiresAt }));
     
     return token;
   } catch (error) {
@@ -106,12 +178,10 @@ export const login = async (credentials) => {
 
 export const logout = async () => {
   try {
-    // Clear token from storage
     await AsyncStorage.removeItem('userToken');
-    await AsyncStorage.removeItem('tokenData');
-    
-    // Optional: Call backend logout endpoint if needed
-    // await axios.post('/auth/logout');
+    await AsyncStorage.removeItem('refreshToken');
+    await AsyncStorage.removeItem('expiresAt');
+    await AsyncStorage.removeItem('secretValidUntil');
   } catch (error) {
     console.error('Logout error:', error);
   }

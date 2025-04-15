@@ -6,10 +6,10 @@ import { AuthContext, AuthProvider } from "./utils/AuthContext";
 import LoginScreen from "./screens/LoginScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import WebViewScreen from "./screens/WebViewScreen"; // We'll create this for OAuth
+import SecretExpiredScreen from "./screens/SecretExpiredScreen";
+import { navigationRef } from "./utils/navigationRef";
 
 const Stack = createStackNavigator();
-
-
 
 const AuthStack = () => {
   return (
@@ -24,7 +24,6 @@ const AppNavigator = () => {
   const { state } = useContext(AuthContext);
 
   if (state.isLoading) {
-    // Show loading screen while checking authentication
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#00BABC" />
@@ -35,17 +34,27 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator>
       {state.userToken ? (
-        <Stack.Screen 
-          name="Profile" 
-          component={ProfileScreen} 
-          options={{ 
-            title: "42 Profile",
-            headerStyle: {
-              backgroundColor: '#00BABC',
-            },
-            headerTintColor: '#fff',
-          }}
-        />
+        <>
+          <Stack.Screen 
+            name="Profile" 
+            component={ProfileScreen} 
+            options={{ 
+              title: "42 Profile",
+              headerStyle: {
+                backgroundColor: '#00BABC',
+              },
+              headerTintColor: '#fff',
+            }}
+          />
+          <Stack.Screen 
+            name="SecretExpired" 
+            component={SecretExpiredScreen} 
+            options={{ 
+              title: "Secret Expired",
+              headerShown: false
+            }}
+          />
+        </>
       ) : (
         // User is not signed in
         <Stack.Screen 
@@ -58,21 +67,22 @@ const AppNavigator = () => {
   );
 };
 
-export default function App() {
+const App = () => {
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <AppNavigator />
       </NavigationContainer>
     </AuthProvider>
   );
-}
+};
 
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5'
-  }
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });
+
+export default App;

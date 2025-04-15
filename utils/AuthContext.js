@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchUserData, getStoredToken, logout as authLogout, isTokenExpired } from './auth';
+import { getStoredToken, fetchUserData, logout, isTokenExpired, refreshAccessToken } from './auth';
+import api from './api';
 
 // Initial state
 const initialState = {
@@ -33,6 +33,7 @@ const authReducer = (state, action) => {
         isSignout: true,
         userToken: null,
         user: null,
+        isLoading: false,
       };
     case 'UPDATE_USER':
       return {
@@ -54,35 +55,41 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const bootstrapAsync = async () => {
       try {
-        // Get token from storage
+        console.log("Starting bootstrap process...");
         const userToken = await getStoredToken();
+        console.log("Got token:", userToken ? "Token exists" : "No token");
         
-        // Check if token is expired
-        const tokenExpired = await isTokenExpired();
-        
-        if (userToken && !tokenExpired) {
-          // If we have a valid token, fetch user data
-          const userData = await fetchUserData();
-          
-          if (userData) {
-            // If we successfully got user data, restore session
-            dispatch({ type: 'RESTORE_TOKEN', token: userToken, user: userData });
-          } else {
-            // If we couldn't get user data, sign out
-            await authLogout();
-            dispatch({ type: 'SIGN_OUT' });
+        if (!userToken) {
+          const tokenExpired = await isTokenExpired();
+          if (tokenExpired) {
+            console.log("Token expired, attempting to refresh...");
+            const newToken = await refreshAccessToken();
+            if (newToken) {
+              const userData = await fetchUserData();
+              if (userData) {
+                dispatch({ type: 'RESTORE_TOKEN', token: newToken, user: userData });
+                return;
+              }
+            }
           }
+          console.log("No valid token found, signing out");
+          await logout();
+          dispatch({ type: 'SIGN_OUT' });
+          return;
+        }
+
+        const userData = await fetchUserData();
+        console.log("User data fetched:", userData ? "Success" : "Failed");
+        
+        if (userData) {
+          dispatch({ type: 'RESTORE_TOKEN', token: userToken, user: userData });
         } else {
-          // No token or token is expired
-          await authLogout();
+          await logout();
           dispatch({ type: 'SIGN_OUT' });
         }
       } catch (e) {
         console.log('Failed to restore authentication state:', e);
-        dispatch({ type: 'RESTORE_TOKEN', token: null, user: null });
-      } finally {
-        // Ensure loading state is set to false
-        dispatch({ type: 'RESTORE_TOKEN', token: null, user: null });
+        dispatch({ type: 'SIGN_OUT' });
       }
     };
 
@@ -94,17 +101,12 @@ export const AuthProvider = ({ children }) => {
     state,
     signIn: async (token) => {
       try {
-        // Store token happens in auth.js getToken function
-        // Fetch user data with the new token
         const userData = await fetchUserData();
-        
         if (userData) {
           dispatch({ type: 'SIGN_IN', token, user: userData });
           return true;
-        } else {
-          console.log('Failed to get user data after sign in');
-          return false;
         }
+        return false;
       } catch (e) {
         console.log('Sign in error:', e);
         return false;
@@ -112,8 +114,7 @@ export const AuthProvider = ({ children }) => {
     },
     signOut: async () => {
       try {
-        // Call logout function from auth.js
-        await authLogout();
+        await logout();
         dispatch({ type: 'SIGN_OUT' });
       } catch (e) {
         console.log('Sign out error:', e);

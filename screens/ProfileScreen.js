@@ -2,8 +2,6 @@ import React, { useContext, useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
-  StyleSheet, 
-  Image, 
   ScrollView, 
   TouchableOpacity, 
   SafeAreaView,
@@ -12,9 +10,11 @@ import {
   Alert
 } from 'react-native';
 import { AuthContext } from '../utils/AuthContext';
-import axios from 'axios'; 
-import api from '../utils/api'; 
-
+import api from '../utils/api';
+import { styles } from '../styles/profileStyles';
+import { getFilteredProjects, getSkills, getStatusColor, getAchievementColor, sortAchievements } from '../utils/profileHelpers';
+import ProfileHeader from '../components/ProfileHeader';
+import StatsSection from '../components/StatsSection';
 
 const ProfileScreen = () => {
   const { state, signOut } = useContext(AuthContext);
@@ -24,8 +24,8 @@ const ProfileScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isViewingOwnProfile, setIsViewingOwnProfile] = useState(true);
-  
-  
+  const [expandedProjects, setExpandedProjects] = useState({});
+
   useEffect(() => {
     if (state.user) {
       setCurrentUser(state.user);
@@ -48,7 +48,6 @@ const ProfileScreen = () => {
 
       if (response.data && response.data.length > 0) {
         const userDetailsResponse = await api.get(`/users/${response.data[0].id}`);
-        
         setCurrentUser(userDetailsResponse.data);
         setIsViewingOwnProfile(false);
       } else {
@@ -83,6 +82,13 @@ const ProfileScreen = () => {
     setSearchQuery('');
   };
 
+  const toggleProjectExpansion = (projectId) => {
+    setExpandedProjects(prev => ({
+      ...prev,
+      [projectId]: !prev[projectId]
+    }));
+  };
+
   if (!currentUser) {
     return (
       <View style={styles.loadingContainer}>
@@ -91,36 +97,10 @@ const ProfileScreen = () => {
     );
   }
 
-  const getFilteredProjects = () => {
-    if (!currentUser.projects_users) return [];
-    
-    const cursusId = projectsFilter === 'main' ? 21 : 9;
-    
-    const filteredProjects = currentUser.projects_users.filter(project => 
-      project.cursus_ids && project.cursus_ids.includes(cursusId)
-    );
-    
-    return filteredProjects.sort((a, b) => {
-      if (!a.marked_at) return 1;
-      if (!b.marked_at) return -1;
-      return new Date(b.marked_at) - new Date(a.marked_at);
-    });
-  };
-
-  const getSkills = () => {
-    if (!currentUser.cursus_users || currentUser.cursus_users.length === 0) return [];
-    
-    const sortedCursus = [...currentUser.cursus_users].sort((a, b) => 
-      new Date(b.begin_at) - new Date(a.begin_at)
-    );
-    
-    return sortedCursus[0].skills || [];
-  };
-
   const renderTabContent = () => {
     switch (activeTab) {
       case 'projects':
-        const filteredProjects = getFilteredProjects();
+        const filteredProjects = getFilteredProjects(currentUser, projectsFilter);
         return (
           <View style={styles.tabContent}>
             {/* Project Type Selector */}
@@ -162,32 +142,87 @@ const ProfileScreen = () => {
             
             {filteredProjects.length > 0 ? (
               filteredProjects.map((project, index) => (
-                <View key={index} style={styles.projectItem}>
-                  <View style={styles.projectLeftSection}>
-                    <Text style={styles.projectName}>{project.project.name}</Text>
-                    {project.marked_at && (
-                      <Text style={styles.projectDate}>
-                        {new Date(project.marked_at).toLocaleDateString()}
+                <View key={index}>
+                  {/* Parent Project */}
+                  <TouchableOpacity 
+                    style={styles.projectItem}
+                    onPress={() => project.children.length > 0 && toggleProjectExpansion(project.project.id)}
+                  >
+                    <View style={styles.projectLeftSection}>
+                      <Text style={styles.projectName}>
+                        {project.project.name}
+                        {project.children.length > 0 && 
+                          (expandedProjects[project.project.id] ? ' ▼' : ' ▶')}
                       </Text>
-                    )}
-                  </View>
-                  
-                  <View style={styles.projectRightSection}>
-                    <Text style={[
-                      styles.projectStatus,
-                      { color: getStatusColor(project.status) }
-                    ]}>
-                      {project.status}
-                    </Text>
-                    {project.final_mark !== null && (
+                      {project.marked_at && (
+                        <Text style={styles.projectDate}>
+                          {new Date(project.marked_at).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </View>
+                    
+                    <View style={styles.projectRightSection}>
                       <Text style={[
-                        styles.projectGrade,
-                        { color: project.validated ? '#4CAF50' : '#F44336' }
+                        styles.projectStatus,
+                        { color: getStatusColor(project.status) }
                       ]}>
-                        {project.final_mark}/100
+                        {project.status}
                       </Text>
-                    )}
-                  </View>
+                      {project.final_mark !== null && (
+                        <Text style={[
+                          styles.projectGrade,
+                          { color: 
+                            project.final_mark < 100 ? '#F44336' : 
+                            project.final_mark === 100 ? '#4CAF50' : 
+                            '#FF9800' 
+                          }
+                        ]}>
+                          {project.final_mark}/100
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {/* Child Projects */}
+                  {project.children.length > 0 && expandedProjects[project.project.id] && (
+                    <View style={styles.childProjectsContainer}>
+                      {project.children.map((childProject, childIndex) => (
+                        <View key={childIndex} style={styles.childProjectItem}>
+                          <View style={styles.projectLeftSection}>
+                            <Text style={styles.childProjectName}>
+                              {childProject.project.name}
+                            </Text>
+                            {childProject.marked_at && (
+                              <Text style={styles.projectDate}>
+                                {new Date(childProject.marked_at).toLocaleDateString()}
+                              </Text>
+                            )}
+                          </View>
+                          
+                          <View style={styles.projectRightSection}>
+                            <Text style={[
+                              styles.projectStatus,
+                              { color: getStatusColor(childProject.status) }
+                            ]}>
+                              {childProject.status}
+                            </Text>
+                            {childProject.final_mark !== null && (
+                              <Text style={[
+                                styles.projectGrade,
+                                { color: 
+                                  childProject.final_mark < 100 ? '#F44336' : 
+                                  childProject.final_mark === 100 ? '#4CAF50' : 
+                                  '#FF9800' 
+                                }
+                              ]}>
+                                {childProject.final_mark}/100
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))
             ) : (
@@ -199,7 +234,7 @@ const ProfileScreen = () => {
         );
         
       case 'skills':
-        const skills = getSkills();
+        const skills = getSkills(currentUser);
         return (
           <View style={styles.tabContent}>
             <Text style={styles.sectionTitle}>Skills</Text>
@@ -229,7 +264,7 @@ const ProfileScreen = () => {
           <View style={styles.tabContent}>
             <Text style={styles.sectionTitle}>Achievements</Text>
             {currentUser.achievements && currentUser.achievements.length > 0 ? (
-              currentUser.achievements.map((achievement, index) => (
+              sortAchievements(currentUser.achievements).map((achievement, index) => (
                 <View key={index} style={styles.achievementItem}>
                   <View style={styles.achievementHeader}>
                     <Text style={styles.achievementName}>{achievement.name}</Text>
@@ -263,8 +298,6 @@ const ProfileScreen = () => {
           placeholder="Search user by login..."
           value={searchQuery}
           onChangeText={setSearchQuery}
-          returnKeyType="search"
-          onSubmitEditing={searchUser}
         />
         <TouchableOpacity 
           style={styles.searchButton} 
@@ -272,59 +305,31 @@ const ProfileScreen = () => {
           disabled={isSearching}
         >
           {isSearching ? (
-            <ActivityIndicator size="small" color="white" />
+            <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.searchButtonText}>Search</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Viewing Other Profile Banner */}
-      {!isViewingOwnProfile && (
-        <View style={styles.viewingBanner}>
-          <Text style={styles.viewingBannerText}>
-            Viewing {currentUser.login}'s profile
-          </Text>
-          <TouchableOpacity onPress={resetToOwnProfile}>
-            <Text style={styles.viewingBannerButton}>Return to My Profile</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       <ScrollView>
-        {/* Profile Header */}
-        <View style={styles.header}>
-          <Image 
-            source={{ uri: currentUser.image?.link || 'https://cdn.intra.42.fr/users/default.png' }} 
-            style={styles.profileImage} 
-          />
-          <View style={styles.userInfo}>
-            <Text style={styles.userName}>{currentUser.displayname || currentUser.login}</Text>
-            <Text style={styles.userLogin}>@{currentUser.login}</Text>
-            <Text style={styles.userEmail}>{currentUser.email}</Text>
-          </View>
-        </View>
+        <ProfileHeader currentUser={currentUser} />
+        <StatsSection currentUser={currentUser} />
 
-        {/* User Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{currentUser.correction_point || 0}</Text>
-            <Text style={styles.statLabel}>Correction Points</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{currentUser.wallet || 0}</Text>
-            <Text style={styles.statLabel}>Wallet</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{currentUser.location || 'N/A'}</Text>
-            <Text style={styles.statLabel}>Location</Text>
-          </View>
-        </View>
+        {/* Back to Own Profile Button */}
+        {!isViewingOwnProfile && (
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={resetToOwnProfile}
+          >
+            <Text style={styles.backButtonText}>Back to My Profile</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Tab Navigation */}
         <View style={styles.tabContainer}>
           <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'projects' && styles.activeTabButton]} 
+            style={[styles.tabButton, activeTab === 'projects' && styles.activeTabButton]}
             onPress={() => setActiveTab('projects')}
           >
             <Text style={[styles.tabButtonText, activeTab === 'projects' && styles.activeTabText]}>
@@ -332,7 +337,7 @@ const ProfileScreen = () => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'skills' && styles.activeTabButton]} 
+            style={[styles.tabButton, activeTab === 'skills' && styles.activeTabButton]}
             onPress={() => setActiveTab('skills')}
           >
             <Text style={[styles.tabButtonText, activeTab === 'skills' && styles.activeTabText]}>
@@ -340,7 +345,7 @@ const ProfileScreen = () => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'achievements' && styles.activeTabButton]} 
+            style={[styles.tabButton, activeTab === 'achievements' && styles.activeTabButton]}
             onPress={() => setActiveTab('achievements')}
           >
             <Text style={[styles.tabButtonText, activeTab === 'achievements' && styles.activeTabText]}>
@@ -360,347 +365,12 @@ const ProfileScreen = () => {
             style={styles.logoutButton} 
             onPress={signOut}
           >
-            <Text style={styles.logoutText}>Logout</Text>
+            <Text style={styles.logoutButtonText}>Logout</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 };
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'finished':
-      return '#4CAF50'; // Green 
-    case 'in_progress':
-      return '#757575'; // Grey 
-    case 'failed':
-      return '#F44336'; // Red
-    default:
-      return '#9E9E9E'; // Lighter grey for unknown status
-  }
-};
-
-const getAchievementColor = (tier) => {
-  switch (tier) {
-    case 'easy':
-      return '#4CAF50';
-    case 'medium':
-      return '#FF9800';
-    case 'hard':
-      return '#F44336';
-    case 'none':
-      return '#9E9E9E';
-    default:
-      return '#9E9E9E';
-  }
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    padding: 15,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 5,
-    paddingHorizontal: 10,
-    marginRight: 10,
-    backgroundColor: '#f9f9f9',
-  },
-  searchButton: {
-    backgroundColor: '#00BABC',
-    paddingHorizontal: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 5,
-  },
-  searchButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  viewingBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#f0f8ff',
-    padding: 10,
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  viewingBannerText: {
-    color: '#555',
-    fontWeight: '500',
-  },
-  viewingBannerButton: {
-    color: '#00BABC',
-    fontWeight: 'bold',
-  },
-  header: {
-    backgroundColor: '#00BABC',
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  userInfo: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  userName: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  userLogin: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  userEmail: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'white',
-    borderRadius: 5,
-    margin: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 15,
-    borderRightWidth: 1,
-    borderRightColor: '#f0f0f0',
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#00BABC',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 5,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'white',
-    borderRadius: 5,
-    margin: 15,
-    marginBottom: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  tabButton: {
-    flex: 1,
-    padding: 15,
-    alignItems: 'center',
-  },
-  activeTabButton: {
-    borderBottomWidth: 3,
-    borderBottomColor: '#00BABC',
-  },
-  tabButtonText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  activeTabText: {
-    color: '#00BABC',
-    fontWeight: 'bold',
-  },
-  projectTypeSelector: {
-    flexDirection: 'row',
-    marginBottom: 15,
-    borderRadius: 5,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#00BABC',
-  },
-  projectTypeButton: {
-    flex: 1,
-    padding: 10,
-    alignItems: 'center',
-    backgroundColor: 'white',
-  },
-  activeProjectTypeButton: {
-    backgroundColor: '#00BABC',
-  },
-  projectTypeText: {
-    color: '#00BABC',
-    fontWeight: '500',
-  },
-  activeProjectTypeText: {
-    color: 'white',
-  },
-  sectionContainer: {
-    backgroundColor: 'white',
-    borderRadius: 5,
-    margin: 15,
-    marginTop: 5,
-    padding: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  tabContent: {
-    minHeight: 200,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
-  },
-  projectItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  projectLeftSection: {
-    flex: 1,
-  },
-  projectRightSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  projectName: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 4,
-  },
-  projectDate: {
-    fontSize: 12,
-    color: '#999',
-  },
-  projectStatus: {
-    fontSize: 14,
-    marginRight: 10,
-    fontWeight: '500',
-  },
-  projectGrade: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    minWidth: 60,
-    textAlign: 'right',
-  },
-  skillItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  skillName: {
-    width: 90,
-    fontSize: 14,
-    color: '#333',
-  },
-  skillBarContainer: {
-    flex: 1,
-    height: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 5,
-    marginHorizontal: 10,
-    overflow: 'hidden',
-  },
-  skillBar: {
-    height: '100%',
-    backgroundColor: '#00BABC',
-    borderRadius: 5,
-  },
-  skillLevel: {
-    width: 45,
-    fontSize: 14,
-    textAlign: 'right',
-    color: '#666',
-  },
-  achievementItem: {
-    padding: 10,
-    marginBottom: 10,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 5,
-    borderLeftWidth: 3,
-    borderLeftColor: '#00BABC',
-  },
-  achievementHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  achievementName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    flex: 1,
-  },
-  achievementTier: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  achievementTierText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  achievementDescription: {
-    fontSize: 14,
-    color: '#666',
-  },
-  emptyMessage: {
-    color: '#999',
-    textAlign: 'center',
-    padding: 15,
-  },
-  logoutButton: {
-    backgroundColor: '#f44336',
-    margin: 15,
-    marginTop: 5,
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  logoutText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-});
 
 export default ProfileScreen;
