@@ -5,9 +5,11 @@ import { makeRedirectUri } from 'expo-auth-session';
 import { AuthContext } from '../utils/AuthContext';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CLIENT_ID, CLIENT_SECRET, TOKEN_URL } from '@env';
 
 const REDIRECT_URI = makeRedirectUri({ native: "com.swiftycompanion://oauth" });
+const CLIENT_ID = "u-s4t2ud-eada5197242c69a9cbe15329b4aec863700f7f919b7c0694a4e1b1afc6ec8c41";
+const SECRET = "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";
+const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
 const AUTH_URL = `https://api.intra.42.fr/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`;
 
 const WebViewScreen = ({ navigation }) => {
@@ -22,7 +24,7 @@ const WebViewScreen = ({ navigation }) => {
       const { data } = await axios.post(TOKEN_URL, {
         grant_type: "authorization_code",
         client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
+        client_secret: SECRET,
         code: authCode,
         redirect_uri: REDIRECT_URI,
       });

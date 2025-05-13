@@ -4,7 +4,7 @@ import { navigationRef } from './navigationRef';
 
 const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
 const CLIENT_ID = "u-s4t2ud-eada5197242c69a9cbe15329b4aec863700f7f919b7c0694a4e1b1afc6ec8c41";
-const SECRET = "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";
+const SECRET = "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";
 
 const api = axios.create({
   baseURL: "https://api.intra.42.fr/v2",
